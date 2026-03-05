@@ -102,11 +102,14 @@ interface ProcoreImage {
   id: number;
   filename: string;
   url: string;
+  thumbnail_url?: string;
   created_at: string;
+  updated_at?: string;
   taken_at?: string;
   description?: string;
-  location_name?: string;
+  location?: { id: number; name: string };
   project?: { id: number; name: string };
+  uploader?: { id?: number; name?: string; login?: string };
   created_by?: { name?: string; login?: string };
   comments?: Array<{ id: number; body: string; created_at: string }>;
 }
@@ -217,11 +220,11 @@ function normalizeImage(image: ProcoreImage, projectName: string): FeedItem {
     projectId: image.project?.id ?? 0,
     projectName: image.project?.name ?? projectName,
     imageUrl: image.url,
-    thumbnailUrl: null,
+    thumbnailUrl: image.thumbnail_url || null,
     takenAt: image.taken_at || null,
     createdAt: image.created_at || null,
-    uploaderName: image.created_by?.name || null,
-    locationName: image.location_name || null,
+    uploaderName: image.uploader?.name || image.created_by?.name || null,
+    locationName: image.location?.name || null,
     description: image.description?.trim() || null,
     commentText,
   };
