@@ -163,7 +163,7 @@ async function fetchImagesForProject(project: ProcoreProject): Promise<ProcoreIm
   // Procore requires created_at as a range: "YYYY-MM-DD...YYYY-MM-DD"
   const todayStr = new Date().toISOString().split('T')[0];
   url.searchParams.set('filters[created_at]', `${sinceStr}...${todayStr}`);
-  url.searchParams.set('sort', '-created_at');
+  // sort param removed — Procore may not support it, JS sort handles ordering
 
   const res = await fetchWithAuth(url.toString());
 
