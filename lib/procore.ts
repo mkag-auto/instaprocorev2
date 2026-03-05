@@ -254,7 +254,13 @@ export async function getFeed() {
     return db - da;
   });
 
+  // Debug: show first 5 items after sort to verify ordering
   console.log(`[InstaProcore] Total images found: ${allItems.length}`);
+  console.log(`[InstaProcore] Top 5 after sort:`, allItems.slice(0, 5).map(i => ({
+    project: i.projectName,
+    createdAt: i.createdAt,
+    takenAt: i.takenAt,
+  })));
 
   return {
     meta: {
