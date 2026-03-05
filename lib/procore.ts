@@ -173,6 +173,18 @@ async function fetchImagesForProject(project: ProcoreProject): Promise<ProcoreIm
   const data = await res.json();
   const images: ProcoreImage[] = Array.isArray(data) ? data : [];
 
+  // Debug: log first image's raw date fields so we can verify field names
+  if (images.length > 0) {
+    const sample = images[0] as Record<string, unknown>;
+    console.log(`[InstaProcore] Sample image fields from "${project.name}":`, {
+      id: sample.id,
+      created_at: sample.created_at,
+      taken_at: sample.taken_at,
+      uploaded_at: sample.uploaded_at,
+      date: sample.date,
+    });
+  }
+
   // Stamp project info onto each image since we know it
   return images.map(img => ({ ...img, project: { id: project.id, name: project.name } }));
 }
