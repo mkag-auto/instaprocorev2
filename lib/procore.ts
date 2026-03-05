@@ -220,10 +220,11 @@ export async function getFeed() {
     .flat()
     .map(img => normalizeImage(img, img.project?.name ?? 'Unknown Project'));
 
-  // Sort newest first (prefer takenAt, fall back to createdAt)
+  // Sort by upload date (createdAt) newest first so today's uploads always appear at the top
+  // takenAt can be weeks old even if uploaded today, so we don't use it for sorting
   allItems.sort((a, b) => {
-    const da = new Date(a.takenAt || a.createdAt || 0).getTime();
-    const db = new Date(b.takenAt || b.createdAt || 0).getTime();
+    const da = new Date(a.createdAt || a.takenAt || 0).getTime();
+    const db = new Date(b.createdAt || b.takenAt || 0).getTime();
     return db - da;
   });
 
