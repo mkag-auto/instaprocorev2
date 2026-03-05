@@ -118,19 +118,29 @@ async function fetchProjects(): Promise<ProcoreProject[]> {
   const sinceStr = since.toISOString().split('T')[0];
   const todayStr = new Date().toISOString().split('T')[0];
 
-  // Only fetch projects updated within our time window — cuts API calls dramatically
+  // Only fetch projects updated within our time window, sorted newest first
   const url =
     `${BASE_URL}/rest/v1.0/projects` +
     `?company_id=${COMPANY_ID}` +
     `&per_page=${PROJECTS_PER_PAGE}` +
     `&filters[status]=Active` +
-    `&filters[updated_at]=${sinceStr}...${todayStr}`;
+    `&filters[updated_at]=${sinceStr}...${todayStr}` +
+    `&sort=-updated_at`;
 
   const res = await fetchWithAuth(url);
   if (!res.ok) throw new Error(`Failed to fetch projects: ${res.status} ${await res.text()}`);
   const data = await res.json();
-  const projects = Array.isArray(data) ? data : [];
-  console.log(`[InstaProcore] ${projects.length} projects active in last ${DAYS_BACK} days (filtered from all projects)`);
+  let projects: ProcoreProject[] = Array.isArray(data) ? data : [];
+
+  // Cap at top 20 most recently updated to stay well within rate limits
+  // These are already sorted newest-first so we get the most active jobsites
+  const PROJECT_CAP = 20;
+  if (projects.length > PROJECT_CAP) {
+    console.log(`[InstaProcore] Capping from ${projects.length} to top ${PROJECT_CAP} most recently updated projects`);
+    projects = projects.slice(0, PROJECT_CAP);
+  }
+
+  console.log(`[InstaProcore] Scanning ${projects.length} most recently active projects:`, projects.map(p => p.name));
   return projects;
 }
 
