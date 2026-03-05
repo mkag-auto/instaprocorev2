@@ -114,39 +114,34 @@ interface ProcoreImage {
 // ─── Fetch projects ───────────────────────────────────────────────────────────
 
 async function fetchProjects(): Promise<ProcoreProject[]> {
-  const since = new Date();
-  since.setDate(since.getDate() - DAYS_BACK);
-  const sinceStr = since.toISOString().split('T')[0];
-  const todayStr = new Date().toISOString().split('T')[0];
-
-  // Only fetch projects updated within our time window
+  // Fetch ALL active projects — we can't filter by photo activity since
+  // Procore's project updated_at doesn't reflect photo uploads
   const url =
     `${BASE_URL}/rest/v1.0/projects` +
     `?company_id=${COMPANY_ID}` +
     `&per_page=${PROJECTS_PER_PAGE}` +
-    `&filters[status]=Active` +
-    `&filters[updated_at]=${sinceStr}...${todayStr}`;
+    `&filters[status]=Active`;
 
   const res = await fetchWithAuth(url);
   if (!res.ok) throw new Error(`Failed to fetch projects: ${res.status} ${await res.text()}`);
   const data = await res.json();
   let projects: ProcoreProject[] = Array.isArray(data) ? data : [];
 
-  // Sort by updated_at descending in code (Procore sort param not always supported)
-  projects.sort((a: ProcoreProject & { updated_at?: string }, b: ProcoreProject & { updated_at?: string }) => {
+  // Sort by updated_at descending so most active projects are first
+  projects.sort((a, b) => {
     const da = new Date(a.updated_at || 0).getTime();
     const db = new Date(b.updated_at || 0).getTime();
     return db - da;
   });
 
-  // Cap at top 20 most recently updated to stay well within rate limits
-  const PROJECT_CAP = 20;
+  // Cap at top 25 — image date filter handles the rest
+  const PROJECT_CAP = 25;
   if (projects.length > PROJECT_CAP) {
-    console.log(`[InstaProcore] Capping from ${projects.length} to top ${PROJECT_CAP} most recently updated projects`);
+    console.log(`[InstaProcore] Capping from ${projects.length} to top ${PROJECT_CAP} projects`);
     projects = projects.slice(0, PROJECT_CAP);
   }
 
-  console.log(`[InstaProcore] Scanning ${projects.length} most recently active projects:`, projects.map(p => p.name));
+  console.log(`[InstaProcore] Scanning ${projects.length} projects:`, projects.map(p => p.name));
   return projects;
 }
 
