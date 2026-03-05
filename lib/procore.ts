@@ -113,12 +113,24 @@ interface ProcoreImage {
 // ─── Fetch projects ───────────────────────────────────────────────────────────
 
 async function fetchProjects(): Promise<ProcoreProject[]> {
-  const url = `${BASE_URL}/rest/v1.0/projects?company_id=${COMPANY_ID}&per_page=${PROJECTS_PER_PAGE}&filters[status]=Active`;
+  const since = new Date();
+  since.setDate(since.getDate() - DAYS_BACK);
+  const sinceStr = since.toISOString().split('T')[0];
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  // Only fetch projects updated within our time window — cuts API calls dramatically
+  const url =
+    `${BASE_URL}/rest/v1.0/projects` +
+    `?company_id=${COMPANY_ID}` +
+    `&per_page=${PROJECTS_PER_PAGE}` +
+    `&filters[status]=Active` +
+    `&filters[updated_at]=${sinceStr}...${todayStr}`;
+
   const res = await fetchWithAuth(url);
   if (!res.ok) throw new Error(`Failed to fetch projects: ${res.status} ${await res.text()}`);
   const data = await res.json();
   const projects = Array.isArray(data) ? data : [];
-  console.log(`[InstaProcore] Found ${projects.length} active projects. First few IDs:`, projects.slice(0, 3).map((p: ProcoreProject) => p.id));
+  console.log(`[InstaProcore] ${projects.length} projects active in last ${DAYS_BACK} days (filtered from all projects)`);
   return projects;
 }
 
