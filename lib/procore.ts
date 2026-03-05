@@ -161,8 +161,11 @@ async function fetchImagesForProject(project: ProcoreProject): Promise<ProcoreIm
   url.searchParams.set('per_page', String(PER_PAGE));
   url.searchParams.set('serializer_view', SERIALIZER_VIEW);
   // Procore requires created_at as a range: "YYYY-MM-DD...YYYY-MM-DD"
-  const todayStr = new Date().toISOString().split('T')[0];
-  url.searchParams.set('filters[created_at]', `${sinceStr}...${todayStr}`);
+  // Use tomorrow as end date — Procore treats end date as exclusive so today's photos get cut off
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = tomorrow.toISOString().split('T')[0];
+  url.searchParams.set('filters[created_at]', `${sinceStr}...${tomorrowStr}`);
   // sort param removed — Procore may not support it, JS sort handles ordering
 
   const res = await fetchWithAuth(url.toString());
