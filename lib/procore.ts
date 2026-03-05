@@ -9,7 +9,7 @@ const CONCURRENCY = parseInt(process.env.CONCURRENCY || '6');
 const MAX_PROJECTS = parseInt(process.env.MAX_PROJECTS || '0');
 const SERIALIZER_VIEW = process.env.SERIALIZER_VIEW || 'mobile_feed';
 
-// ─── In-memory token cache (survives within a warm serverless instance) ───────
+// ─── In-memory token cache ────────────────────────────────────────────────────
 let memToken: { accessToken: string; refreshToken: string; expiresAt: number } | null = null;
 
 function getEnvTokens() {
@@ -19,59 +19,26 @@ function getEnvTokens() {
   };
 }
 
-/**
- * Attempt to update Vercel env vars with new tokens so the next cold start
- * picks them up. Requires VERCEL_TOKEN + VERCEL_PROJECT_ID env vars.
- * This is optional — if not configured, tokens are kept only in memory.
- */
 async function persistTokensToVercel(accessToken: string, refreshToken: string) {
   const vercelToken = process.env.VERCEL_TOKEN;
   const projectId = process.env.VERCEL_PROJECT_ID;
   const teamId = process.env.VERCEL_TEAM_ID;
-
-  if (!vercelToken || !projectId) {
-    console.warn('[InstaProcore] VERCEL_TOKEN/VERCEL_PROJECT_ID not set — tokens stored in memory only. Will need manual refresh on cold start after token expiry.');
-    return;
-  }
-
+  if (!vercelToken || !projectId) return;
   const teamQuery = teamId ? `?teamId=${teamId}` : '';
-
   try {
-    // Fetch current env vars to get IDs for PATCH
-    const listRes = await fetch(
-      `https://api.vercel.com/v9/projects/${projectId}/env${teamQuery}`,
-      { headers: { Authorization: `Bearer ${vercelToken}` } }
-    );
-    if (!listRes.ok) {
-      console.error('[InstaProcore] Failed to list Vercel env vars:', listRes.status);
-      return;
-    }
+    const listRes = await fetch(`https://api.vercel.com/v9/projects/${projectId}/env${teamQuery}`, {
+      headers: { Authorization: `Bearer ${vercelToken}` },
+    });
+    if (!listRes.ok) return;
     const { envs } = await listRes.json();
-
-    for (const [key, value] of [
-      ['PROCORE_ACCESS_TOKEN', accessToken],
-      ['PROCORE_REFRESH_TOKEN', refreshToken],
-    ] as [string, string][]) {
+    for (const [key, value] of [['PROCORE_ACCESS_TOKEN', accessToken], ['PROCORE_REFRESH_TOKEN', refreshToken]] as [string, string][]) {
       const existing = envs.find((e: { key: string }) => e.key === key);
       if (existing) {
-        const patchRes = await fetch(
-          `https://api.vercel.com/v9/projects/${projectId}/env/${existing.id}${teamQuery}`,
-          {
-            method: 'PATCH',
-            headers: {
-              Authorization: `Bearer ${vercelToken}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ value, type: 'encrypted' }),
-          }
-        );
-        if (!patchRes.ok) {
-          console.error(`[InstaProcore] Failed to update ${key}:`, patchRes.status);
-        } else {
-          console.log(`[InstaProcore] Updated ${key} in Vercel`);
-        }
-      } else {
-        console.warn(`[InstaProcore] Env var ${key} not found in Vercel project — skipping update`);
+        await fetch(`https://api.vercel.com/v9/projects/${projectId}/env/${existing.id}${teamQuery}`, {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${vercelToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value, type: 'encrypted' }),
+        });
       }
     }
   } catch (err) {
@@ -81,10 +48,7 @@ async function persistTokensToVercel(accessToken: string, refreshToken: string) 
 
 async function doTokenRefresh(): Promise<string> {
   const { refreshToken } = memToken ?? getEnvTokens();
-  if (!refreshToken) throw new Error('No refresh token available. Please re-authenticate at /api/auth');
-
-  console.log('[InstaProcore] Refreshing Procore token...');
-
+  if (!refreshToken) throw new Error('No refresh token. Visit /api/auth to authenticate.');
   const res = await fetch(`${BASE_URL}/oauth/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -96,70 +60,36 @@ async function doTokenRefresh(): Promise<string> {
       refresh_token: refreshToken,
     }),
   });
-
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Token refresh failed (${res.status}): ${body}`);
-  }
-
+  if (!res.ok) throw new Error(`Token refresh failed (${res.status}): ${await res.text()}`);
   const data = await res.json();
-  const newAccess: string = data.access_token;
-  const newRefresh: string = data.refresh_token;
-
-  // Cache in memory
-  memToken = {
-    accessToken: newAccess,
-    refreshToken: newRefresh,
-    expiresAt: Date.now() + 23 * 60 * 60 * 1000, // 23 hrs
-  };
-
-  // Persist to Vercel env vars (best-effort)
-  persistTokensToVercel(newAccess, newRefresh).catch(() => {});
-
-  return newAccess;
+  memToken = { accessToken: data.access_token, refreshToken: data.refresh_token, expiresAt: Date.now() + 23 * 60 * 60 * 1000 };
+  persistTokensToVercel(data.access_token, data.refresh_token).catch(() => {});
+  return data.access_token;
 }
 
 async function getValidAccessToken(): Promise<string> {
-  // Use in-memory if not expired
-  if (memToken && memToken.expiresAt > Date.now() + 5 * 60 * 1000) {
-    return memToken.accessToken;
-  }
-
-  // Cold start: initialize from env vars
+  if (memToken && memToken.expiresAt > Date.now() + 5 * 60 * 1000) return memToken.accessToken;
   const { accessToken, refreshToken } = getEnvTokens();
   if (accessToken) {
-    memToken = {
-      accessToken,
-      refreshToken,
-      expiresAt: Date.now() + 23 * 60 * 60 * 1000,
-    };
+    memToken = { accessToken, refreshToken, expiresAt: Date.now() + 23 * 60 * 60 * 1000 };
     return accessToken;
   }
-
   throw new Error('PROCORE_ACCESS_TOKEN not configured. Visit /api/auth to authenticate.');
 }
 
 async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
   const token = await getValidAccessToken();
-
   const makeRequest = (t: string) =>
-    fetch(url, {
-      ...options,
-      headers: { ...options.headers, Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' },
-    });
-
+    fetch(url, { ...options, headers: { ...options.headers, Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' } });
   let res = await makeRequest(token);
-
   if (res.status === 401) {
-    // Access token expired — refresh and retry once
     const newToken = await doTokenRefresh();
     res = await makeRequest(newToken);
   }
-
   return res;
 }
 
-// ─── Procore Data Types ────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface ProcoreProject {
   id: number;
@@ -175,69 +105,80 @@ interface ProcoreImage {
   taken_at?: string;
   description?: string;
   location_name?: string;
+  project?: { id: number; name: string };
   created_by?: { name?: string; login?: string };
   comments?: Array<{ id: number; body: string; created_at: string }>;
 }
 
-// ─── Procore API Calls ─────────────────────────────────────────────────────────
+// ─── Fetch projects ───────────────────────────────────────────────────────────
 
 async function fetchProjects(): Promise<ProcoreProject[]> {
-  const url =
-    `${BASE_URL}/rest/v1.0/projects` +
-    `?company_id=${COMPANY_ID}` +
-    `&per_page=${PROJECTS_PER_PAGE}` +
-    `&filters[status]=Active`;
-
+  const url = `${BASE_URL}/rest/v1.0/projects?company_id=${COMPANY_ID}&per_page=${PROJECTS_PER_PAGE}&filters[status]=Active`;
   const res = await fetchWithAuth(url);
   if (!res.ok) throw new Error(`Failed to fetch projects: ${res.status} ${await res.text()}`);
   const data = await res.json();
-  console.log(`[InstaProcore] Projects raw sample:`, JSON.stringify(Array.isArray(data) ? data.slice(0,2) : data).slice(0, 500));
-  return Array.isArray(data) ? data : [];
+  const projects = Array.isArray(data) ? data : [];
+  console.log(`[InstaProcore] Found ${projects.length} active projects. First few IDs:`, projects.slice(0, 3).map((p: ProcoreProject) => p.id));
+  return projects;
 }
 
-async function fetchImagesForProject(projectId: number): Promise<ProcoreImage[]> {
+// ─── Fetch images for ONE project (14-day filter) ─────────────────────────────
+
+async function fetchImagesForProject(project: ProcoreProject): Promise<ProcoreImage[]> {
   const since = new Date();
   since.setDate(since.getDate() - DAYS_BACK);
-  const sinceStr = since.toISOString().split('T')[0]; // YYYY-MM-DD
+  const sinceStr = since.toISOString().split('T')[0];
 
-  // Correct endpoint: top-level /images with project_id as query param (not nested under /projects)
   const url = new URL(`${BASE_URL}/rest/v1.0/images`);
-  url.searchParams.set('project_id', String(projectId));
+  url.searchParams.set('project_id', String(project.id));
   url.searchParams.set('company_id', COMPANY_ID);
   url.searchParams.set('per_page', String(PER_PAGE));
   url.searchParams.set('serializer_view', SERIALIZER_VIEW);
   url.searchParams.set('filters[created_at]', sinceStr);
-  url.searchParams.set('sort', '-created_at'); // newest first
+  url.searchParams.set('sort', '-created_at');
 
   const res = await fetchWithAuth(url.toString());
 
   if (!res.ok) {
     const body = await res.text();
-    console.warn(`[InstaProcore] Project ${projectId} images failed: ${res.status} — ${body.slice(0,200)}`);
+    console.warn(`[InstaProcore] Project "${project.name}" (${project.id}) failed: ${res.status} — ${body.slice(0, 150)}`);
     return [];
   }
 
   const data = await res.json();
-  console.log(`[InstaProcore] Project ${projectId}: ${Array.isArray(data) ? data.length : 0} images`);
-  return Array.isArray(data) ? data : [];
+  const images: ProcoreImage[] = Array.isArray(data) ? data : [];
+
+  // Stamp project info onto each image since we know it
+  return images.map(img => ({ ...img, project: { id: project.id, name: project.name } }));
 }
 
-// ─── Normalization ─────────────────────────────────────────────────────────────
+// ─── Concurrency limiter ──────────────────────────────────────────────────────
 
-function normalizeImage(image: ProcoreImage, project: ProcoreProject): FeedItem {
+async function runConcurrent<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let index = 0;
+  async function worker() {
+    while (index < items.length) {
+      const i = index++;
+      results[i] = await fn(items[i]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
+// ─── Normalize ────────────────────────────────────────────────────────────────
+
+function normalizeImage(image: ProcoreImage, projectName: string): FeedItem {
   let commentText: string | null = null;
-
   if (image.comments && image.comments.length > 0) {
-    const sorted = [...image.comments].sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
+    const sorted = [...image.comments].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     commentText = sorted[0]?.body?.trim() || null;
   }
-
   return {
-    id: `${project.id}-${image.id}`,
-    projectId: project.id,
-    projectName: project.name,
+    id: `${image.project?.id ?? 0}-${image.id}`,
+    projectId: image.project?.id ?? 0,
+    projectName: image.project?.name ?? projectName,
     imageUrl: image.url,
     thumbnailUrl: null,
     takenAt: image.taken_at || null,
@@ -249,39 +190,21 @@ function normalizeImage(image: ProcoreImage, project: ProcoreProject): FeedItem 
   };
 }
 
-// ─── Concurrency Limiter ───────────────────────────────────────────────────────
-
-async function runConcurrent<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let index = 0;
-
-  async function worker() {
-    while (index < items.length) {
-      const i = index++;
-      results[i] = await fn(items[i]);
-    }
-  }
-
-  const workers = Array.from({ length: Math.min(limit, items.length) }, worker);
-  await Promise.all(workers);
-  return results;
-}
-
-// ─── Main Export ───────────────────────────────────────────────────────────────
+// ─── Main export ──────────────────────────────────────────────────────────────
 
 export async function getFeed() {
   let projects = await fetchProjects();
+  if (MAX_PROJECTS > 0) projects = projects.slice(0, MAX_PROJECTS);
 
-  if (MAX_PROJECTS > 0) {
-    projects = projects.slice(0, MAX_PROJECTS);
-  }
+  console.log(`[InstaProcore] Scanning ${projects.length} projects for images in last ${DAYS_BACK} days...`);
 
-  const imageArrays = await runConcurrent(projects, CONCURRENCY, async (project) => {
-    const images = await fetchImagesForProject(project.id);
-    return images.map((img) => normalizeImage(img, project));
-  });
+  const imageArrays = await runConcurrent(projects, CONCURRENCY, (project) =>
+    fetchImagesForProject(project)
+  );
 
-  const allItems = imageArrays.flat();
+  const allItems = imageArrays
+    .flat()
+    .map(img => normalizeImage(img, img.project?.name ?? 'Unknown Project'));
 
   // Sort newest first (prefer takenAt, fall back to createdAt)
   allItems.sort((a, b) => {
@@ -289,6 +212,8 @@ export async function getFeed() {
     const db = new Date(b.takenAt || b.createdAt || 0).getTime();
     return db - da;
   });
+
+  console.log(`[InstaProcore] Total images found: ${allItems.length}`);
 
   return {
     meta: {
