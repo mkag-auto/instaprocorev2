@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import type { FeedItem, FeedResponse } from '@/lib/types';
 
 // ─── Config (overrideable via env vars baked at build time) ───────────────────
-const POLL_MS = parseInt(process.env.NEXT_PUBLIC_POLL_MS || '600000');
+const POLL_MS = 600000; // 10 minutes
 const SLIDE_MS = parseInt(process.env.NEXT_PUBLIC_SLIDE_MS || '8000');
 const NEW_BURST_MS = parseInt(process.env.NEXT_PUBLIC_NEW_BURST_MS || '15000');
 
