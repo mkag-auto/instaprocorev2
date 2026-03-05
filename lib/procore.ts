@@ -175,7 +175,7 @@ async function fetchImagesForProject(project: ProcoreProject): Promise<ProcoreIm
 
   // Debug: log first image's raw date fields so we can verify field names
   if (images.length > 0) {
-    const sample = images[0] as Record<string, unknown>;
+    const sample = images[0] as unknown as Record<string, unknown>;
     console.log(`[InstaProcore] Sample image fields from "${project.name}":`, {
       id: sample.id,
       created_at: sample.created_at,
