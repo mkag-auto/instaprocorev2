@@ -134,7 +134,9 @@ async function fetchImagesForProject(project: ProcoreProject): Promise<ProcoreIm
   url.searchParams.set('company_id', COMPANY_ID);
   url.searchParams.set('per_page', String(PER_PAGE));
   url.searchParams.set('serializer_view', SERIALIZER_VIEW);
-  url.searchParams.set('filters[created_at]', sinceStr);
+  // Procore requires created_at as a range: "YYYY-MM-DD...YYYY-MM-DD"
+  const todayStr = new Date().toISOString().split('T')[0];
+  url.searchParams.set('filters[created_at]', `${sinceStr}...${todayStr}`);
   url.searchParams.set('sort', '-created_at');
 
   const res = await fetchWithAuth(url.toString());
