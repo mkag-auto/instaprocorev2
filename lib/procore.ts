@@ -95,6 +95,7 @@ interface ProcoreProject {
   id: number;
   name: string;
   active: boolean;
+  updated_at?: string;
 }
 
 interface ProcoreImage {
@@ -118,22 +119,27 @@ async function fetchProjects(): Promise<ProcoreProject[]> {
   const sinceStr = since.toISOString().split('T')[0];
   const todayStr = new Date().toISOString().split('T')[0];
 
-  // Only fetch projects updated within our time window, sorted newest first
+  // Only fetch projects updated within our time window
   const url =
     `${BASE_URL}/rest/v1.0/projects` +
     `?company_id=${COMPANY_ID}` +
     `&per_page=${PROJECTS_PER_PAGE}` +
     `&filters[status]=Active` +
-    `&filters[updated_at]=${sinceStr}...${todayStr}` +
-    `&sort=-updated_at`;
+    `&filters[updated_at]=${sinceStr}...${todayStr}`;
 
   const res = await fetchWithAuth(url);
   if (!res.ok) throw new Error(`Failed to fetch projects: ${res.status} ${await res.text()}`);
   const data = await res.json();
   let projects: ProcoreProject[] = Array.isArray(data) ? data : [];
 
+  // Sort by updated_at descending in code (Procore sort param not always supported)
+  projects.sort((a: ProcoreProject & { updated_at?: string }, b: ProcoreProject & { updated_at?: string }) => {
+    const da = new Date(a.updated_at || 0).getTime();
+    const db = new Date(b.updated_at || 0).getTime();
+    return db - da;
+  });
+
   // Cap at top 20 most recently updated to stay well within rate limits
-  // These are already sorted newest-first so we get the most active jobsites
   const PROJECT_CAP = 20;
   if (projects.length > PROJECT_CAP) {
     console.log(`[InstaProcore] Capping from ${projects.length} to top ${PROJECT_CAP} most recently updated projects`);
