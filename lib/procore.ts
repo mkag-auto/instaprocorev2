@@ -198,20 +198,24 @@ async function fetchImagesForProject(projectId: number): Promise<ProcoreImage[]>
   since.setDate(since.getDate() - DAYS_BACK);
   const sinceStr = since.toISOString().split('T')[0]; // YYYY-MM-DD
 
-  const url = new URL(`${BASE_URL}/rest/v1.0/projects/${projectId}/images`);
-  url.searchParams.set('company_id', COMPANY_ID);
+  // Correct endpoint: top-level /images with project_id as query param (not nested under /projects)
+  const url = new URL(`${BASE_URL}/rest/v1.0/images`);
+  url.searchParams.set('project_id', String(projectId));
   url.searchParams.set('per_page', String(PER_PAGE));
   url.searchParams.set('serializer_view', SERIALIZER_VIEW);
   url.searchParams.set('filters[created_at]', sinceStr);
+  url.searchParams.set('sort', '-created_at'); // newest first
 
   const res = await fetchWithAuth(url.toString());
 
   if (!res.ok) {
-    console.warn(`[InstaProcore] Project ${projectId} images failed: ${res.status}`);
+    const body = await res.text();
+    console.warn(`[InstaProcore] Project ${projectId} images failed: ${res.status} — ${body.slice(0,200)}`);
     return [];
   }
 
   const data = await res.json();
+  console.log(`[InstaProcore] Project ${projectId}: ${Array.isArray(data) ? data.length : 0} images`);
   return Array.isArray(data) ? data : [];
 }
 
