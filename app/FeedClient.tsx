@@ -512,9 +512,10 @@ export default function FeedPage() {
       <div
         style={{
           display: 'flex',
-          width: `${items.length * 100}vw`,
-          height: '100vh',
-          transform: `translateX(-${current * 100}vw)`,
+          flexDirection: 'column',                           // was: no flexDirection (default row)
+          width: '100vw',                                    // was: `${items.length * 100}vw`
+          height: `${items.length * 100}vh`,                 // was: '100vh'
+          transform: `translateY(-${current * 100}vh)`,      // was: translateX(-${current * 100}vw)
           transition: 'transform 0.7s cubic-bezier(0.77, 0, 0.175, 1)',
         }}
       >
