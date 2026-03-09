@@ -5,7 +5,7 @@ const COMPANY_ID = process.env.PROCORE_COMPANY_ID!;
 const DAYS_BACK = parseInt(process.env.DAYS_BACK || '14');
 const PER_PAGE = parseInt(process.env.PER_PAGE || '100');
 const PROJECTS_PER_PAGE = parseInt(process.env.PROJECTS_PER_PAGE || '300');
-const CONCURRENCY = parseInt(process.env.CONCURRENCY || '10');
+const CONCURRENCY = parseInt(process.env.CONCURRENCY || '3');
 const MAX_PROJECTS = parseInt(process.env.MAX_PROJECTS || '0');
 const SERIALIZER_VIEW = process.env.SERIALIZER_VIEW || 'mobile_feed';
 
@@ -204,6 +204,7 @@ async function runConcurrent<T, R>(items: T[], limit: number, fn: (item: T) => P
     while (index < items.length) {
       const i = index++;
       results[i] = await fn(items[i]);
+      await new Promise(res => setTimeout(res, 200));
     }
   }
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
