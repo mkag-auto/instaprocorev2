@@ -540,15 +540,19 @@ export default function FeedPage() {
           left: '48px',
           display: 'flex',
           alignItems: 'center',
-          gap: '8px',
+          gap: '16px',
           zIndex: 100,
         }}
       >
-        <div style={{ width: '16px', height: '16px', background: '#851e20', borderRadius: '2px' }} />
-        <span style={{ color: '#3a3a3a', fontSize: '11px', fontFamily: 'monospace', letterSpacing: '2px', textTransform: 'uppercase' }}>
-          InstaProcore
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ width: '16px', height: '16px', background: '#851e20', borderRadius: '2px' }} />
+          <span style={{ color: '#3a3a3a', fontSize: '11px', fontFamily: 'monospace', letterSpacing: '2px', textTransform: 'uppercase' }}>
+            InstaProcore
+          </span>
+        </div>
+        <a href="/gallery" style={{ color: '#3a3a3a', fontSize: '11px', fontFamily: 'monospace', letterSpacing: '2px', textTransform: 'uppercase', textDecoration: 'none' }}>
+          ⊞ Gallery
+        </a>
       </div>
-    </div>
   );
 }
