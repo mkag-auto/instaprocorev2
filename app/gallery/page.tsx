@@ -41,11 +41,10 @@ function Lightbox({ item, onClose, onPrev, onNext }: {
         backdropFilter: 'blur(8px)',
       }}
     >
-      {/* Panel */}
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          display: 'flex', flexDirection: 'row', gap: '0',
+          display: 'flex', flexDirection: 'row',
           background: '#141414', borderRadius: '10px',
           border: '1px solid #2a2a2a',
           overflow: 'hidden',
@@ -60,7 +59,6 @@ function Lightbox({ item, onClose, onPrev, onNext }: {
           alignItems: 'center', justifyContent: 'center',
           minHeight: '400px', position: 'relative', overflow: 'hidden',
         }}>
-          {/* blurred bg */}
           <div style={{
             position: 'absolute', inset: 0,
             backgroundImage: `url(${item.imageUrl})`,
@@ -79,8 +77,6 @@ function Lightbox({ item, onClose, onPrev, onNext }: {
               borderRadius: '4px',
             }}
           />
-
-          {/* Prev/Next arrows */}
           <button onClick={onPrev} style={arrowStyle('left')}>‹</button>
           <button onClick={onNext} style={arrowStyle('right')}>›</button>
         </div>
@@ -92,11 +88,9 @@ function Lightbox({ item, onClose, onPrev, onNext }: {
           borderLeft: '1px solid #2a2a2a',
           overflowY: 'auto',
         }}>
-          {/* Top red bar */}
           <div style={{ height: '3px', background: 'linear-gradient(90deg, #851e20, #b84042)', flexShrink: 0 }} />
 
           <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}>
-            {/* Project */}
             <div>
               <div style={metaLabel}>Project</div>
               <div style={{ color: '#fff', fontSize: '16px', fontWeight: 700, fontFamily: 'Georgia, serif', lineHeight: 1.3 }}>
@@ -104,13 +98,11 @@ function Lightbox({ item, onClose, onPrev, onNext }: {
               </div>
             </div>
 
-            {/* Date */}
             <div>
               <div style={metaLabel}>Taken</div>
               <div style={metaValue}>{fmt(item.takenAt || item.createdAt)}</div>
             </div>
 
-            {/* Uploaded */}
             {item.createdAt && (
               <div>
                 <div style={metaLabel}>Uploaded</div>
@@ -118,7 +110,6 @@ function Lightbox({ item, onClose, onPrev, onNext }: {
               </div>
             )}
 
-            {/* By */}
             {item.uploaderName && (
               <div>
                 <div style={metaLabel}>By</div>
@@ -126,7 +117,6 @@ function Lightbox({ item, onClose, onPrev, onNext }: {
               </div>
             )}
 
-            {/* Location */}
             {item.locationName && (
               <div>
                 <div style={metaLabel}>Location</div>
@@ -134,7 +124,6 @@ function Lightbox({ item, onClose, onPrev, onNext }: {
               </div>
             )}
 
-            {/* Caption */}
             {cap && (
               <div>
                 <div style={metaLabel}>{item.commentText ? 'Comment' : 'Description'}</div>
@@ -145,7 +134,6 @@ function Lightbox({ item, onClose, onPrev, onNext }: {
             )}
           </div>
 
-          {/* Close button */}
           <div style={{ padding: '16px 20px', borderTop: '1px solid #222' }}>
             <button
               onClick={onClose}
@@ -218,7 +206,6 @@ function Thumb({ item, onClick }: { item: FeedItem; onClick: () => void }) {
         }}
       />
 
-      {/* Hover overlay */}
       <div style={{
         position: 'absolute', inset: 0,
         background: 'linear-gradient(180deg, transparent 40%, rgba(0,0,0,0.85) 100%)',
@@ -233,7 +220,7 @@ function Thumb({ item, onClick }: { item: FeedItem; onClick: () => void }) {
           </p>
         )}
         {item.uploaderName && (
-          <p style={{ color: '#878787', fontSize: '10px', marginTop: '4px', margin: '4px 0 0' }}>
+          <p style={{ color: '#878787', fontSize: '10px', margin: '4px 0 0' }}>
             {item.uploaderName}
           </p>
         )}
@@ -251,6 +238,16 @@ export default function GalleryPage() {
   const [lightbox, setLightbox] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [groupBy, setGroupBy] = useState<'project' | 'date' | 'none'>('project');
+
+  // Enable scrolling — globals.css sets overflow:hidden on body for the feed
+  useEffect(() => {
+    document.body.style.overflow = 'auto';
+    document.documentElement.style.overflow = 'auto';
+    return () => {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    };
+  }, []);
 
   useEffect(() => {
     fetch('/api/feed')
@@ -276,9 +273,10 @@ export default function GalleryPage() {
   const prevPhoto = useCallback(() => setLightbox(l => l === null ? null : (l - 1 + filtered.length) % filtered.length), [filtered.length]);
   const nextPhoto = useCallback(() => setLightbox(l => l === null ? null : (l + 1) % filtered.length), [filtered.length]);
 
-  // Group items
   function groupItems() {
-    if (groupBy === 'none') return [{ label: `All Photos (${filtered.length})`, items: filtered, indices: filtered.map((_, i) => i) }];
+    if (groupBy === 'none') {
+      return [{ label: `All Photos (${filtered.length})`, items: filtered, indices: filtered.map((_, i) => i) }];
+    }
 
     if (groupBy === 'project') {
       const map = new Map<string, { items: FeedItem[]; indices: number[] }>();
@@ -290,11 +288,12 @@ export default function GalleryPage() {
       return Array.from(map.entries()).map(([label, v]) => ({ label: `${label} (${v.items.length})`, ...v }));
     }
 
-    // group by date
     const map = new Map<string, { items: FeedItem[]; indices: number[] }>();
     filtered.forEach((item, i) => {
       const d = item.createdAt || item.takenAt;
-      const label = d ? new Date(d).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : 'Unknown Date';
+      const label = d
+        ? new Date(d).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+        : 'Unknown Date';
       if (!map.has(label)) map.set(label, { items: [], indices: [] });
       map.get(label)!.items.push(item);
       map.get(label)!.indices.push(i);
@@ -325,7 +324,7 @@ export default function GalleryPage() {
   );
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0d0d0d', color: '#f0f0f0', fontFamily: 'Georgia, serif', overflow: 'auto' }}>
+    <div style={{ minHeight: '100vh', background: '#0d0d0d', color: '#f0f0f0', fontFamily: 'Georgia, serif' }}>
 
       {/* Top red bar */}
       <div style={{ height: '3px', background: 'linear-gradient(90deg, #851e20, #b84042, #851e20)', position: 'sticky', top: 0, zIndex: 50 }} />
@@ -347,9 +346,7 @@ export default function GalleryPage() {
             </span>
           </div>
 
-          {/* Controls */}
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-            {/* Search */}
             <input
               type="text"
               placeholder="Search photos…"
@@ -362,7 +359,6 @@ export default function GalleryPage() {
               }}
             />
 
-            {/* Group by */}
             <div style={{ display: 'flex', gap: '4px' }}>
               {(['project', 'date', 'none'] as const).map(g => (
                 <button
@@ -393,7 +389,6 @@ export default function GalleryPage() {
         ) : (
           groups.map(group => (
             <div key={group.label} style={{ marginBottom: '48px' }}>
-              {/* Group header */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
                 <div style={{ width: '3px', height: '20px', background: '#851e20', borderRadius: '2px', flexShrink: 0 }} />
                 <h2 style={{ fontSize: '15px', color: '#c8c8c8', fontFamily: 'monospace', letterSpacing: '1px', margin: 0, fontWeight: 400 }}>
@@ -402,7 +397,6 @@ export default function GalleryPage() {
                 <div style={{ flex: 1, height: '1px', background: '#1e1e1e' }} />
               </div>
 
-              {/* Grid */}
               <div style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
