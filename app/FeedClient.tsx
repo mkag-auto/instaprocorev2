@@ -122,7 +122,6 @@ function PhotoCard({ item, isActive }: { item: FeedItem; isActive: boolean }) {
             marginTop: '4px',
           }}
         >
-          {/* Date chip */}
           <MetaChip icon="📅" label="Taken" value={displayDate(item)} />
           {item.uploaderName && <MetaChip icon="👤" label="By" value={item.uploaderName} />}
           {item.locationName && <MetaChip icon="📍" label="" value={item.locationName} />}
@@ -416,8 +415,7 @@ export default function FeedPage() {
       const newOnes = incoming.filter((i) => !oldIds.has(i.id));
 
       if (newOnes.length > 0 && itemsRef.current.length > 0) {
-        // New photos detected — jump to index 0 briefly, then return
-        const savedIndex = currentRef.current + newOnes.length; // adjust for inserted items
+        const savedIndex = currentRef.current + newOnes.length;
 
         setItems(incoming);
         setCurrent(0);
@@ -432,7 +430,6 @@ export default function FeedPage() {
         }, NEW_BURST_MS);
       } else {
         setItems(incoming);
-        // Keep current index valid
         if (currentRef.current >= incoming.length) {
           setCurrent(0);
         }
@@ -540,19 +537,29 @@ export default function FeedPage() {
           left: '48px',
           display: 'flex',
           alignItems: 'center',
-          gap: '16px',
+          gap: '8px',
           zIndex: 100,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <div style={{ width: '16px', height: '16px', background: '#851e20', borderRadius: '2px' }} />
-          <span style={{ color: '#3a3a3a', fontSize: '11px', fontFamily: 'monospace', letterSpacing: '2px', textTransform: 'uppercase' }}>
-            InstaProcore
-          </span>
-        </div>
-        <a href="/gallery" style={{ color: '#3a3a3a', fontSize: '11px', fontFamily: 'monospace', letterSpacing: '2px', textTransform: 'uppercase', textDecoration: 'none' }}>
+        <div style={{ width: '16px', height: '16px', background: '#851e20', borderRadius: '2px' }} />
+        <span style={{ color: '#3a3a3a', fontSize: '11px', fontFamily: 'monospace', letterSpacing: '2px', textTransform: 'uppercase' }}>
+          InstaProcore
+        </span>
+        <a
+          href="/gallery"
+          style={{
+            color: '#3a3a3a',
+            fontSize: '11px',
+            fontFamily: 'monospace',
+            letterSpacing: '2px',
+            textTransform: 'uppercase',
+            textDecoration: 'none',
+            marginLeft: '12px',
+          }}
+        >
           ⊞ Gallery
         </a>
       </div>
+    </div>
   );
 }
