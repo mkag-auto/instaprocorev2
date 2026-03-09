@@ -5,7 +5,7 @@ const COMPANY_ID = process.env.PROCORE_COMPANY_ID!;
 const DAYS_BACK = parseInt(process.env.DAYS_BACK || '14');
 const PER_PAGE = parseInt(process.env.PER_PAGE || '100');
 const PROJECTS_PER_PAGE = parseInt(process.env.PROJECTS_PER_PAGE || '300');
-const CONCURRENCY = parseInt(process.env.CONCURRENCY || '6');
+const CONCURRENCY = parseInt(process.env.CONCURRENCY || '10');
 const MAX_PROJECTS = parseInt(process.env.MAX_PROJECTS || '0');
 const SERIALIZER_VIEW = process.env.SERIALIZER_VIEW || 'mobile_feed';
 
@@ -138,13 +138,13 @@ async function fetchProjects(): Promise<ProcoreProject[]> {
   });
 
   // Cap at top 25 — image date filter handles the rest
-  const PROJECT_CAP = 25;
-  if (projects.length > PROJECT_CAP) {
-    console.log(`[InstaProcore] Capping from ${projects.length} to top ${PROJECT_CAP} projects`);
-    projects = projects.slice(0, PROJECT_CAP);
-  }
+//  const PROJECT_CAP = 25;
+//  if (projects.length > PROJECT_CAP) {
+ //   console.log(`[InstaProcore] Capping from ${projects.length} to top ${PROJECT_CAP} projects`);
+ //   projects = projects.slice(0, PROJECT_CAP);
+ // }
 
-  console.log(`[InstaProcore] Scanning ${projects.length} projects:`, projects.map(p => p.name));
+  console.log(`[InstaProcore] Scanning all ${projects.length} projects:`, projects.map(p => p.name));
   return projects;
 }
 
