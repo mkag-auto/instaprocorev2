@@ -1,8 +1,8 @@
 'use client';
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 
-export default function LoginPage() {
+function LoginForm() {
   const [key, setKey] = useState('');
   const params = useSearchParams();
   const from = params.get('from') || '/';
@@ -46,5 +46,13 @@ export default function LoginPage() {
         ENTER
       </button>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   );
 }
