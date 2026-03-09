@@ -5,7 +5,7 @@
   "installCommand": "npm install",
   "functions": {
     "app/api/feed/route.ts": {
-      "maxDuration": 30
+      "maxDuration": 60
     },
     "app/api/auth/callback/route.ts": {
       "maxDuration": 15
