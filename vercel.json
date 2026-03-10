@@ -4,11 +4,14 @@
   "devCommand": "next dev",
   "installCommand": "npm install",
   "functions": {
-    "app/api/feed/route.ts": {
-      "maxDuration": 60
-    },
-    "app/api/auth/callback/route.ts": {
-      "maxDuration": 15
+    "app/api/feed/route.ts": { "maxDuration": 60 },
+    "app/api/auth/callback/route.ts": { "maxDuration": 15 },
+    "app/api/auth/cron-refresh/route.ts": { "maxDuration": 15 }
+  },
+  "crons": [
+    {
+      "path": "/api/auth/cron-refresh",
+      "schedule": "0 * * * *"
     }
-  }
+  ]
 }
