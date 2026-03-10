@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
     return new NextResponse(buffer, {
       headers: {
         'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400',
+        'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
       },
     });
   } catch (err) {
