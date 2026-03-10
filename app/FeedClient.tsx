@@ -57,8 +57,7 @@ function PhotoCard({ item, isActive }: { item: FeedItem; isActive: boolean }) {
         style={{
           position: 'absolute',
           inset: 0,
-          backgroundImage: `url(${proxyUrl(item.imageUrl)})`,
-
+          backgroundImage: `url(${item.imageUrl})`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           filter: 'blur(32px) brightness(0.18) saturate(0.5)',
