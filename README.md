@@ -4,7 +4,7 @@ TV-friendly photo feed for DAKboard. Pulls recent jobsite photos from all Procor
 
 ---
 
-## Prerequisites
+## Prerequisites 
 
 - Vercel account (vercel.com)
 - GitHub account
