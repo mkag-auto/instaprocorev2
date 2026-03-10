@@ -9,6 +9,10 @@ const SLIDE_MS = parseInt(process.env.NEXT_PUBLIC_SLIDE_MS || '8000');
 const NEW_BURST_MS = parseInt(process.env.NEXT_PUBLIC_NEW_BURST_MS || '15000');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+function proxyUrl(url: string | null): string {
+  if (!url) return '';
+  return `/api/image?url=${encodeURIComponent(url)}`;
+}
 
 function fmtDate(iso: string | null): string {
   if (!iso) return '—';
