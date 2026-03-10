@@ -57,7 +57,8 @@ function PhotoCard({ item, isActive }: { item: FeedItem; isActive: boolean }) {
         style={{
           position: 'absolute',
           inset: 0,
-          backgroundImage: `url(${item.imageUrl})`,
+          backgroundImage: `url(${proxyUrl(item.imageUrl)})`,
+
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           filter: 'blur(32px) brightness(0.18) saturate(0.5)',
@@ -147,7 +148,7 @@ function PhotoCard({ item, isActive }: { item: FeedItem; isActive: boolean }) {
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={item.imageUrl}
+          src={proxyUrl(item.imageUrl)}
           alt={cap || item.projectName}
           style={{
             maxWidth: '100%',
