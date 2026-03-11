@@ -20,32 +20,30 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const upstream = await fetch(imageUrl, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      // Don't follow redirects blindly — some CDN URLs don't need auth
-      redirect: 'follow',
+    // HEAD request only — just check if the URL is still valid
+    const check = await fetch(imageUrl, {
+      method: 'HEAD',
+      headers: { Authorization: `Bearer ${token}` },
+      redirect: 'manual',
     });
 
-    if (!upstream.ok) {
-      return NextResponse.json(
-        { error: `Upstream ${upstream.status}` },
-        { status: upstream.status }
-      );
+    // If valid (2xx or 3xx redirect), send browser directly to Procore CDN
+    // This means ZERO image bytes flow through Vercel
+    if (check.status < 400) {
+      return NextResponse.redirect(imageUrl, {
+        status: 302,
+        headers: {
+          // Cache the redirect for 1 hour so repeat loads skip Vercel entirely
+          'Cache-Control': 'public, max-age=3600',
+        },
+      });
     }
 
-    const contentType = upstream.headers.get('content-type') || 'image/jpeg';
-    const buffer = await upstream.arrayBuffer();
+    // URL has expired — return 404 so FeedClient can fall back gracefully
+    return NextResponse.json({ error: `Image expired (${check.status})` }, { status: 404 });
 
-    return new NextResponse(buffer, {
-      headers: {
-        'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
-      },
-    });
   } catch (err) {
-    console.error('[InstaProcore] Image proxy error:', err);
-    return NextResponse.json({ error: 'Proxy fetch failed' }, { status: 500 });
+    console.error('[InstaProcore] Image redirect error:', err);
+    return NextResponse.json({ error: 'Proxy redirect failed' }, { status: 500 });
   }
 }
