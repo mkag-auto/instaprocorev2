@@ -127,6 +127,7 @@ function PhotoCard({ item, isActive }: { item: FeedItem; isActive: boolean }) {
           }}
         >
           <MetaChip icon="📅" label="Taken" value={displayDate(item)} />
+          {item.createdAt && <MetaChip icon="⬆️" label="Uploaded" value={fmtDate(item.createdAt)} />}
           {item.uploaderName && <MetaChip icon="👤" label="By" value={item.uploaderName} />}
           {item.locationName && <MetaChip icon="📍" label="" value={item.locationName} />}
         </div>
