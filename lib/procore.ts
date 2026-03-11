@@ -5,7 +5,7 @@ const COMPANY_ID = process.env.PROCORE_COMPANY_ID!;
 const DAYS_BACK = parseInt(process.env.DAYS_BACK || '14');
 const PER_PAGE = parseInt(process.env.PER_PAGE || '100');
 const PROJECTS_PER_PAGE = parseInt(process.env.PROJECTS_PER_PAGE || '300');
-const CONCURRENCY = parseInt(process.env.CONCURRENCY || '6');
+const CONCURRENCY = parseInt(process.env.CONCURRENCY || '3');
 const MAX_PROJECTS = parseInt(process.env.MAX_PROJECTS || '0');
 const SERIALIZER_VIEW = process.env.SERIALIZER_VIEW || 'mobile_feed';
 
