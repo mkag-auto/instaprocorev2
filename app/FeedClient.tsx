@@ -8,6 +8,9 @@ const POLL_MS = 600000; // 10 minutes
 const SLIDE_MS = parseInt(process.env.NEXT_PUBLIC_SLIDE_MS || '8000');
 const NEW_BURST_MS = parseInt(process.env.NEXT_PUBLIC_NEW_BURST_MS || '15000');
 
+// How many cards ahead/behind the current card to preload images for
+const PRELOAD_RADIUS = 2;
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function proxyUrl(url: string | null): string {
   if (!url) return '';
@@ -36,7 +39,15 @@ function displayDate(item: FeedItem): string {
 
 // ─── Card component ───────────────────────────────────────────────────────────
 
-function PhotoCard({ item, isActive }: { item: FeedItem; isActive: boolean }) {
+function PhotoCard({
+  item,
+  isActive,
+  isNear,
+}: {
+  item: FeedItem;
+  isActive: boolean;
+  isNear: boolean; // only load image src when near current card
+}) {
   const cap = caption(item);
 
   return (
@@ -52,26 +63,29 @@ function PhotoCard({ item, isActive }: { item: FeedItem; isActive: boolean }) {
         flexShrink: 0,
       }}
     >
-      {/* Background blur image for atmosphere */}
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          backgroundImage: `url(${item.imageUrl})`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          filter: 'blur(32px) brightness(0.18) saturate(0.5)',
-          transform: 'scale(1.1)',
-          zIndex: 0,
-        }}
-      />
+      {/* Background blur — only render when near to avoid decoding 1100 images */}
+      {isNear && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            backgroundImage: `url(${proxyUrl(item.imageUrl)})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            filter: 'blur(32px) brightness(0.18) saturate(0.5)',
+            transform: 'scale(1.1)',
+            zIndex: 0,
+          }}
+        />
+      )}
 
       {/* Gradient overlays */}
       <div
         style={{
           position: 'absolute',
           inset: 0,
-          background: 'linear-gradient(180deg, rgba(13,13,13,0.85) 0%, transparent 25%, transparent 60%, rgba(13,13,13,0.97) 100%)',
+          background:
+            'linear-gradient(180deg, rgba(13,13,13,0.85) 0%, transparent 25%, transparent 60%, rgba(13,13,13,0.97) 100%)',
           zIndex: 1,
         }}
       />
@@ -127,13 +141,15 @@ function PhotoCard({ item, isActive }: { item: FeedItem; isActive: boolean }) {
           }}
         >
           <MetaChip icon="📅" label="Taken" value={displayDate(item)} />
-          {item.createdAt && <MetaChip icon="⬆️" label="Uploaded" value={fmtDate(item.createdAt)} />}
+          {item.createdAt && (
+            <MetaChip icon="⬆️" label="Uploaded" value={fmtDate(item.createdAt)} />
+          )}
           {item.uploaderName && <MetaChip icon="👤" label="By" value={item.uploaderName} />}
           {item.locationName && <MetaChip icon="📍" label="" value={item.locationName} />}
         </div>
       </div>
 
-      {/* Main image */}
+      {/* Main image — src is undefined until card is near, preventing 1100 simultaneous requests */}
       <div
         style={{
           position: 'relative',
@@ -148,14 +164,15 @@ function PhotoCard({ item, isActive }: { item: FeedItem; isActive: boolean }) {
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={proxyUrl(item.imageUrl)}
+          src={isNear ? proxyUrl(item.imageUrl) : undefined}
           alt={cap || item.projectName}
           style={{
             maxWidth: '100%',
             maxHeight: '100%',
             objectFit: 'contain',
             borderRadius: '6px',
-            boxShadow: '0 8px 80px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.04)',
+            boxShadow:
+              '0 8px 80px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.04)',
             opacity: isActive ? 1 : 0.7,
             transition: 'opacity 0.6s ease',
           }}
@@ -210,7 +227,15 @@ function PhotoCard({ item, isActive }: { item: FeedItem; isActive: boolean }) {
   );
 }
 
-function MetaChip({ icon, label, value }: { icon: string; label: string; value: string }) {
+function MetaChip({
+  icon,
+  label,
+  value,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+}) {
   return (
     <div
       style={{
@@ -268,7 +293,10 @@ function DotNav({ total, current }: { total: number; current: number }) {
   if (total <= 1) return null;
 
   const shown = Math.min(total, MAX_DOTS);
-  const offset = total > MAX_DOTS ? Math.max(0, Math.min(current - Math.floor(MAX_DOTS / 2), total - MAX_DOTS)) : 0;
+  const offset =
+    total > MAX_DOTS
+      ? Math.max(0, Math.min(current - Math.floor(MAX_DOTS / 2), total - MAX_DOTS))
+      : 0;
 
   return (
     <div
@@ -368,8 +396,12 @@ export default function FeedPage() {
   const progressStartRef = useRef<number>(Date.now());
 
   // Keep refs in sync
-  useEffect(() => { itemsRef.current = items; }, [items]);
-  useEffect(() => { currentRef.current = current; }, [current]);
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+  useEffect(() => {
+    currentRef.current = current;
+  }, [current]);
 
   // ── Progress ticker ──────────────────────────────────────────────────────────
   const startProgress = useCallback(() => {
@@ -469,7 +501,17 @@ export default function FeedPage() {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', flexDirection: 'column', gap: '24px', background: '#0d0d0d' }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '100vh',
+          flexDirection: 'column',
+          gap: '24px',
+          background: '#0d0d0d',
+        }}
+      >
         <div style={{ display: 'flex', gap: '8px' }}>
           {[0, 1, 2].map((i) => (
             <div
@@ -485,47 +527,121 @@ export default function FeedPage() {
           ))}
         </div>
         <style>{`@keyframes bounce { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-12px); opacity: 0.3; } }`}</style>
-        <p style={{ color: '#878787', fontSize: '14px', fontFamily: 'monospace', letterSpacing: '2px' }}>LOADING FEED</p>
+        <p
+          style={{
+            color: '#878787',
+            fontSize: '14px',
+            fontFamily: 'monospace',
+            letterSpacing: '2px',
+          }}
+        >
+          LOADING FEED
+        </p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', flexDirection: 'column', gap: '16px', background: '#0d0d0d', padding: '40px' }}>
-        <div style={{ width: '48px', height: '48px', borderRadius: '50%', border: '3px solid #851e20', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', color: '#851e20' }}>!</div>
-        <p style={{ color: '#f7ecec', fontSize: '20px', fontWeight: 600 }}>Error Loading Feed</p>
-        <p style={{ color: '#878787', fontSize: '14px', fontFamily: 'monospace', textAlign: 'center', maxWidth: '600px' }}>{error}</p>
-        <p style={{ color: '#555', fontSize: '12px', fontFamily: 'monospace' }}>Retrying automatically…</p>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '100vh',
+          flexDirection: 'column',
+          gap: '16px',
+          background: '#0d0d0d',
+          padding: '40px',
+        }}
+      >
+        <div
+          style={{
+            width: '48px',
+            height: '48px',
+            borderRadius: '50%',
+            border: '3px solid #851e20',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '24px',
+            color: '#851e20',
+          }}
+        >
+          !
+        </div>
+        <p style={{ color: '#f7ecec', fontSize: '20px', fontWeight: 600 }}>
+          Error Loading Feed
+        </p>
+        <p
+          style={{
+            color: '#878787',
+            fontSize: '14px',
+            fontFamily: 'monospace',
+            textAlign: 'center',
+            maxWidth: '600px',
+          }}
+        >
+          {error}
+        </p>
+        <p style={{ color: '#555', fontSize: '12px', fontFamily: 'monospace' }}>
+          Retrying automatically…
+        </p>
       </div>
     );
   }
 
   if (items.length === 0) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', flexDirection: 'column', gap: '16px', background: '#0d0d0d' }}>
-        <p style={{ color: '#878787', fontSize: '24px' }}>No images found in the last {process.env.NEXT_PUBLIC_DAYS_BACK || '14'} days.</p>
-        <p style={{ color: '#555', fontSize: '14px', fontFamily: 'monospace' }}>Checking again every {POLL_MS / 1000}s…</p>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '100vh',
+          flexDirection: 'column',
+          gap: '16px',
+          background: '#0d0d0d',
+        }}
+      >
+        <p style={{ color: '#878787', fontSize: '24px' }}>
+          No images found in the last {process.env.NEXT_PUBLIC_DAYS_BACK || '14'} days.
+        </p>
+        <p style={{ color: '#555', fontSize: '14px', fontFamily: 'monospace' }}>
+          Checking again every {POLL_MS / 1000}s…
+        </p>
       </div>
     );
   }
 
   return (
-    <div style={{ width: '100vw', height: '100vh', overflow: 'hidden', background: '#0d0d0d', position: 'relative' }}>
-
+    <div
+      style={{
+        width: '100vw',
+        height: '100vh',
+        overflow: 'hidden',
+        background: '#0d0d0d',
+        position: 'relative',
+      }}
+    >
       {/* Slide container */}
       <div
         style={{
           display: 'flex',
-          flexDirection: 'column',                           // was: no flexDirection (default row)
-          width: '100vw',                                    // was: `${items.length * 100}vw`
-          height: `${items.length * 100}vh`,                 // was: '100vh'
-          transform: `translateY(-${current * 100}vh)`,      // was: translateX(-${current * 100}vw)
+          flexDirection: 'column',
+          width: '100vw',
+          height: `${items.length * 100}vh`,
+          transform: `translateY(-${current * 100}vh)`,
           transition: 'transform 0.7s cubic-bezier(0.77, 0, 0.175, 1)',
         }}
       >
         {items.map((item, i) => (
-          <PhotoCard key={item.id} item={item} isActive={i === current} />
+          <PhotoCard
+            key={item.id}
+            item={item}
+            isActive={i === current}
+            isNear={Math.abs(i - current) <= PRELOAD_RADIUS}
+          />
         ))}
       </div>
 
@@ -547,8 +663,18 @@ export default function FeedPage() {
           zIndex: 100,
         }}
       >
-        <div style={{ width: '16px', height: '16px', background: '#851e20', borderRadius: '2px' }} />
-        <span style={{ color: '#3a3a3a', fontSize: '11px', fontFamily: 'monospace', letterSpacing: '2px', textTransform: 'uppercase' }}>
+        <div
+          style={{ width: '16px', height: '16px', background: '#851e20', borderRadius: '2px' }}
+        />
+        <span
+          style={{
+            color: '#3a3a3a',
+            fontSize: '11px',
+            fontFamily: 'monospace',
+            letterSpacing: '2px',
+            textTransform: 'uppercase',
+          }}
+        >
           InstaProcore
         </span>
         <a
