@@ -56,7 +56,6 @@ async function doTokenRefresh(): Promise<string> {
       grant_type: 'refresh_token',
       client_id: process.env.PROCORE_CLIENT_ID,
       client_secret: process.env.PROCORE_CLIENT_SECRET,
-      redirect_uri: process.env.PROCORE_REDIRECT_URI,
       refresh_token: refreshToken,
     }),
   });
