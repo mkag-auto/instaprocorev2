@@ -55,8 +55,10 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ ok: true, refreshedAt: new Date().toISOString() });
 }
 
-// Fetch the current PROCORE_REFRESH_TOKEN value from Vercel's env API
-// so we always use the latest token, not a stale process.env value.
+// Fetch the current PROCORE_REFRESH_TOKEN value from Vercel's env API.
+// The list endpoint does NOT return decrypted values for encrypted env vars,
+// so we first list to get the env var IDs, then fetch each one individually
+// to get the actual decrypted value.
 async function getLatestTokensFromVercel(): Promise<{ accessToken: string; refreshToken: string } | null> {
   const vercelToken = process.env.VERCEL_TOKEN;
   const projectId = process.env.VERCEL_PROJECT_ID;
@@ -65,27 +67,43 @@ async function getLatestTokensFromVercel(): Promise<{ accessToken: string; refre
 
   const teamQuery = teamId ? `?teamId=${teamId}` : '';
   try {
+    // Step 1: List env vars to get their IDs
     const listRes = await fetch(`https://api.vercel.com/v9/projects/${projectId}/env${teamQuery}`, {
       headers: { Authorization: `Bearer ${vercelToken}` },
     });
     if (!listRes.ok) {
-      console.warn('[InstaProcore] Could not read Vercel env vars:', listRes.status);
+      console.warn('[InstaProcore] Could not list Vercel env vars:', listRes.status);
       return null;
     }
     const { envs } = await listRes.json();
 
-    let accessToken = '';
-    let refreshToken = '';
-    for (const env of envs) {
-      // Vercel env API returns decrypted values when using a valid VERCEL_TOKEN
-      if (env.key === 'PROCORE_ACCESS_TOKEN' && env.value) accessToken = env.value;
-      if (env.key === 'PROCORE_REFRESH_TOKEN' && env.value) refreshToken = env.value;
+    const accessEnv = envs.find((e: { key: string }) => e.key === 'PROCORE_ACCESS_TOKEN');
+    const refreshEnv = envs.find((e: { key: string }) => e.key === 'PROCORE_REFRESH_TOKEN');
+
+    if (!refreshEnv) {
+      console.warn('[InstaProcore] PROCORE_REFRESH_TOKEN not found in Vercel env vars');
+      return null;
     }
 
+    // Step 2: Fetch each env var individually to get decrypted values
+    const fetchDecrypted = async (envId: string): Promise<string> => {
+      const res = await fetch(`https://api.vercel.com/v9/projects/${projectId}/env/${envId}${teamQuery}`, {
+        headers: { Authorization: `Bearer ${vercelToken}` },
+      });
+      if (!res.ok) return '';
+      const data = await res.json();
+      return data.value || '';
+    };
+
+    const refreshToken = await fetchDecrypted(refreshEnv.id);
+    const accessToken = accessEnv ? await fetchDecrypted(accessEnv.id) : '';
+
     if (refreshToken) {
-      console.log('[InstaProcore] Read live tokens from Vercel API');
+      console.log('[InstaProcore] Read live decrypted tokens from Vercel API');
       return { accessToken, refreshToken };
     }
+
+    console.warn('[InstaProcore] Vercel API returned empty refresh token value');
     return null;
   } catch (err) {
     console.warn('[InstaProcore] Failed to read Vercel env vars:', err);
