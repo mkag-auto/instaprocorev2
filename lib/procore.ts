@@ -12,6 +12,12 @@ const SERIALIZER_VIEW = process.env.SERIALIZER_VIEW || 'mobile_feed';
 // ─── In-memory token cache ────────────────────────────────────────────────────
 let memToken: { accessToken: string; refreshToken: string; expiresAt: number } | null = null;
 
+// ─── Refresh lock ─────────────────────────────────────────────────────────────
+// Prevents multiple concurrent 401 responses from each triggering separate
+// refresh requests. Procore uses rotating refresh tokens — the first refresh
+// consumes the old token, so a second concurrent refresh would get "invalid_grant".
+let refreshInFlight: Promise<string> | null = null;
+
 function getEnvTokens() {
   return {
     accessToken: process.env.PROCORE_ACCESS_TOKEN || '',
@@ -41,14 +47,20 @@ async function persistTokensToVercel(accessToken: string, refreshToken: string) 
         });
       }
     }
+    console.log('[InstaProcore] Tokens persisted to Vercel env vars');
   } catch (err) {
     console.error('[InstaProcore] Vercel env update error:', err);
   }
 }
 
-async function doTokenRefresh(): Promise<string> {
+async function _doTokenRefreshInternal(): Promise<string> {
   const { refreshToken } = memToken ?? getEnvTokens();
   if (!refreshToken) throw new Error('No refresh token. Visit /api/auth to authenticate.');
+
+  console.log('[InstaProcore] Refreshing access token...');
+
+  // NOTE: redirect_uri must NOT be included in refresh_token grants.
+  // Procore only accepts it during the initial authorization_code exchange.
   const res = await fetch(`${BASE_URL}/oauth/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -59,20 +71,63 @@ async function doTokenRefresh(): Promise<string> {
       refresh_token: refreshToken,
     }),
   });
-  if (!res.ok) throw new Error(`Token refresh failed (${res.status}): ${await res.text()}`);
+
+  if (!res.ok) {
+    const errText = await res.text();
+    console.error('[InstaProcore] Token refresh failed:', res.status, errText);
+    // Clear memToken so next request re-reads env vars (cron may have updated them)
+    memToken = null;
+    throw new Error(`Token refresh failed (${res.status}): ${errText}`);
+  }
+
   const data = await res.json();
-  memToken = { accessToken: data.access_token, refreshToken: data.refresh_token, expiresAt: Date.now() + 23 * 60 * 60 * 1000 };
+  memToken = {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token,
+    // Procore tokens last ~2 hours; set slightly under to trigger proactive refresh
+    expiresAt: Date.now() + 110 * 60 * 1000,
+  };
+
+  console.log('[InstaProcore] Token refresh successful, persisting to Vercel...');
   persistTokensToVercel(data.access_token, data.refresh_token).catch(() => {});
+
   return data.access_token;
 }
 
+// Locked wrapper: only one refresh can happen at a time.
+// If a refresh is already in flight, all callers await the same promise.
+async function doTokenRefresh(): Promise<string> {
+  if (refreshInFlight) {
+    console.log('[InstaProcore] Refresh already in flight, waiting...');
+    return refreshInFlight;
+  }
+
+  refreshInFlight = _doTokenRefreshInternal().finally(() => {
+    refreshInFlight = null;
+  });
+
+  return refreshInFlight;
+}
+
 async function getValidAccessToken(): Promise<string> {
-  if (memToken && memToken.expiresAt > Date.now() + 5 * 60 * 1000) return memToken.accessToken;
+  // If we have a cached token that isn't close to expiring, use it
+  if (memToken && memToken.expiresAt > Date.now() + 5 * 60 * 1000) {
+    return memToken.accessToken;
+  }
+
+  // Cold start: read from env vars. These are updated by cron or prior refreshes.
+  // Use a conservative 2-hour expiry — if the token was refreshed by cron an hour ago,
+  // it's still valid. If it's stale, the 401 handler in fetchWithAuth will refresh it.
   const { accessToken, refreshToken } = getEnvTokens();
   if (accessToken) {
-    memToken = { accessToken, refreshToken, expiresAt: Date.now() + 23 * 60 * 60 * 1000 };
+    memToken = {
+      accessToken,
+      refreshToken,
+      expiresAt: Date.now() + 2 * 60 * 60 * 1000,
+    };
     return accessToken;
   }
+
   throw new Error('PROCORE_ACCESS_TOKEN not configured. Visit /api/auth to authenticate.');
 }
 
@@ -80,11 +135,15 @@ async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Re
   const token = await getValidAccessToken();
   const makeRequest = (t: string) =>
     fetch(url, { ...options, headers: { ...options.headers, Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' } });
+
   let res = await makeRequest(token);
+
   if (res.status === 401) {
+    console.log('[InstaProcore] Got 401, triggering token refresh...');
     const newToken = await doTokenRefresh();
     res = await makeRequest(newToken);
   }
+
   return res;
 }
 
@@ -135,13 +194,6 @@ async function fetchProjects(): Promise<ProcoreProject[]> {
     const db = new Date(b.updated_at || 0).getTime();
     return db - da;
   });
-
-  // Cap at top 25 — image date filter handles the rest
-//  const PROJECT_CAP = 25;
-//  if (projects.length > PROJECT_CAP) {
- //   console.log(`[InstaProcore] Capping from ${projects.length} to top ${PROJECT_CAP} projects`);
- //   projects = projects.slice(0, PROJECT_CAP);
- // }
 
   console.log(`[InstaProcore] Scanning all ${projects.length} projects:`, projects.map(p => p.name));
   return projects;
