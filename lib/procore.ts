@@ -25,6 +25,50 @@ function getEnvTokens() {
   };
 }
 
+// Fetch the LATEST tokens from Vercel's env API (not stale process.env).
+// The list endpoint doesn't return decrypted values for encrypted vars,
+// so we list first to get IDs, then fetch each individually.
+async function getLatestTokensFromVercel(): Promise<{ accessToken: string; refreshToken: string } | null> {
+  const vercelToken = process.env.VERCEL_TOKEN;
+  const projectId = process.env.VERCEL_PROJECT_ID;
+  const teamId = process.env.VERCEL_TEAM_ID;
+  if (!vercelToken || !projectId) return null;
+
+  const teamQuery = teamId ? `?teamId=${teamId}` : '';
+  try {
+    const listRes = await fetch(`https://api.vercel.com/v9/projects/${projectId}/env${teamQuery}`, {
+      headers: { Authorization: `Bearer ${vercelToken}` },
+    });
+    if (!listRes.ok) return null;
+    const { envs } = await listRes.json();
+
+    const accessEnv = envs.find((e: { key: string }) => e.key === 'PROCORE_ACCESS_TOKEN');
+    const refreshEnv = envs.find((e: { key: string }) => e.key === 'PROCORE_REFRESH_TOKEN');
+    if (!refreshEnv) return null;
+
+    const fetchDecrypted = async (envId: string): Promise<string> => {
+      const res = await fetch(`https://api.vercel.com/v9/projects/${projectId}/env/${envId}${teamQuery}`, {
+        headers: { Authorization: `Bearer ${vercelToken}` },
+      });
+      if (!res.ok) return '';
+      const data = await res.json();
+      return data.value || '';
+    };
+
+    const refreshToken = await fetchDecrypted(refreshEnv.id);
+    const accessToken = accessEnv ? await fetchDecrypted(accessEnv.id) : '';
+
+    if (refreshToken) {
+      console.log('[InstaProcore] Read live decrypted tokens from Vercel API');
+      return { accessToken, refreshToken };
+    }
+    return null;
+  } catch (err) {
+    console.warn('[InstaProcore] Failed to read Vercel env vars:', err);
+    return null;
+  }
+}
+
 async function persistTokensToVercel(accessToken: string, refreshToken: string) {
   const vercelToken = process.env.VERCEL_TOKEN;
   const projectId = process.env.VERCEL_PROJECT_ID;
@@ -54,10 +98,16 @@ async function persistTokensToVercel(accessToken: string, refreshToken: string) 
 }
 
 async function _doTokenRefreshInternal(): Promise<string> {
-  const { refreshToken } = memToken ?? getEnvTokens();
+  // Try to get the latest refresh token from Vercel API first (not stale process.env)
+  const liveTokens = await getLatestTokensFromVercel();
+  const refreshToken = liveTokens?.refreshToken
+    || memToken?.refreshToken
+    || getEnvTokens().refreshToken;
+
   if (!refreshToken) throw new Error('No refresh token. Visit /api/auth to authenticate.');
 
-  console.log('[InstaProcore] Refreshing access token...');
+  console.log('[InstaProcore] Refreshing access token...',
+    liveTokens ? '(using token from Vercel API)' : '(using cached/env token)');
 
   // NOTE: redirect_uri must NOT be included in refresh_token grants.
   // Procore only accepts it during the initial authorization_code exchange.
@@ -75,7 +125,7 @@ async function _doTokenRefreshInternal(): Promise<string> {
   if (!res.ok) {
     const errText = await res.text();
     console.error('[InstaProcore] Token refresh failed:', res.status, errText);
-    // Clear memToken so next request re-reads env vars (cron may have updated them)
+    // Clear memToken so next request re-reads from Vercel API
     memToken = null;
     throw new Error(`Token refresh failed (${res.status}): ${errText}`);
   }
@@ -115,9 +165,9 @@ async function getValidAccessToken(): Promise<string> {
     return memToken.accessToken;
   }
 
-  // Cold start: read from env vars. These are updated by cron or prior refreshes.
-  // Use a conservative 2-hour expiry — if the token was refreshed by cron an hour ago,
-  // it's still valid. If it's stale, the 401 handler in fetchWithAuth will refresh it.
+  // Cold start: read from env vars. These may be stale if cron rotated them,
+  // but the 401 handler in fetchWithAuth will trigger a refresh that reads
+  // the latest from Vercel API.
   const { accessToken, refreshToken } = getEnvTokens();
   if (accessToken) {
     memToken = {
@@ -175,8 +225,6 @@ interface ProcoreImage {
 // ─── Fetch projects ───────────────────────────────────────────────────────────
 
 async function fetchProjects(): Promise<ProcoreProject[]> {
-  // Fetch ALL active projects — we can't filter by photo activity since
-  // Procore's project updated_at doesn't reflect photo uploads
   const url =
     `${BASE_URL}/rest/v1.0/projects` +
     `?company_id=${COMPANY_ID}` +
@@ -188,7 +236,6 @@ async function fetchProjects(): Promise<ProcoreProject[]> {
   const data = await res.json();
   let projects: ProcoreProject[] = Array.isArray(data) ? data : [];
 
-  // Sort by updated_at descending so most active projects are first
   projects.sort((a, b) => {
     const da = new Date(a.updated_at || 0).getTime();
     const db = new Date(b.updated_at || 0).getTime();
@@ -211,13 +258,10 @@ async function fetchImagesForProject(project: ProcoreProject): Promise<ProcoreIm
   url.searchParams.set('company_id', COMPANY_ID);
   url.searchParams.set('per_page', String(PER_PAGE));
   url.searchParams.set('serializer_view', SERIALIZER_VIEW);
-  // Procore requires created_at as a range: "YYYY-MM-DD...YYYY-MM-DD"
-  // Use tomorrow as end date — Procore treats end date as exclusive so today's photos get cut off
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowStr = tomorrow.toISOString().split('T')[0];
   url.searchParams.set('filters[created_at]', `${sinceStr}...${tomorrowStr}`);
-  // sort param removed — Procore may not support it, JS sort handles ordering
 
   const res = await fetchWithAuth(url.toString());
 
@@ -230,7 +274,6 @@ async function fetchImagesForProject(project: ProcoreProject): Promise<ProcoreIm
   const data = await res.json();
   const images: ProcoreImage[] = Array.isArray(data) ? data : [];
 
-  // Debug: log first image's raw date fields so we can verify field names
   if (images.length > 0) {
     const sample = images[0] as unknown as Record<string, unknown>;
     console.log(`[InstaProcore] Sample image fields from "${project.name}":`, {
@@ -242,7 +285,6 @@ async function fetchImagesForProject(project: ProcoreProject): Promise<ProcoreIm
     });
   }
 
-  // Stamp project info onto each image since we know it
   return images.map(img => ({ ...img, project: { id: project.id, name: project.name } }));
 }
 
@@ -301,15 +343,12 @@ export async function getFeed() {
     .flat()
     .map(img => normalizeImage(img, img.project?.name ?? 'Unknown Project'));
 
-  // Sort by upload date (createdAt) newest first so today's uploads always appear at the top
-  // takenAt can be weeks old even if uploaded today, so we don't use it for sorting
   allItems.sort((a, b) => {
     const da = new Date(a.createdAt || a.takenAt || 0).getTime();
     const db = new Date(b.createdAt || b.takenAt || 0).getTime();
     return db - da;
   });
 
-  // Debug: show first 5 items after sort to verify ordering
   console.log(`[InstaProcore] Total images found: ${allItems.length}`);
   console.log(`[InstaProcore] Top 5 after sort:`, allItems.slice(0, 5).map(i => ({
     project: i.projectName,
