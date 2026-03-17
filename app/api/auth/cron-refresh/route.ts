@@ -15,6 +15,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'No refresh token configured' }, { status: 500 });
   }
 
+  // NOTE: redirect_uri must NOT be included in refresh_token grants.
+  // Procore only accepts it during the initial authorization_code exchange.
+  // Including it here causes "invalid_grant" errors.
   const body: Record<string, string> = {
     grant_type: 'refresh_token',
     client_id: process.env.PROCORE_CLIENT_ID || '',
@@ -22,10 +25,7 @@ export async function GET(req: NextRequest) {
     refresh_token: refreshToken,
   };
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || '';
-  if (appUrl && !appUrl.includes('localhost')) {
-    body.redirect_uri = `https://${appUrl}/api/auth/callback`;
-  }
+  console.log('[InstaProcore] Cron refresh starting...');
 
   const res = await fetch(`${BASE_URL}/oauth/token`, {
     method: 'POST',
